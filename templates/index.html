@@ -10,6 +10,10 @@
     <label for="ordem_id">Buscar por Ordem (ID):</label>
     <input type="text" class="form-control" id="ordem_id" name="ordem_id" value="{{ ordem_id or '' }}" />
   </div>
+  <div class="form-group">
+    <label for="volume">Buscar por Volume:</label>
+    <input type="text" class="form-control" id="volume" name="volume" value="{{ volume or '' }}" />
+  </div>
   <button type="submit" class="btn btn-primary">Buscar</button>
 </form>
 
@@ -25,6 +29,9 @@
     {% endif %}
     <strong>Nome:</strong> {{ item.nome }}<br />
     <strong>Quantidade:</strong> {{ item.quantidade }} {{ 'itens' if item.tipo == 'packlist' else '' }}<br />
+    {% if item.volume %}
+    <strong>Volume:</strong> {{ item.volume }}<br />
+    {% endif %}
     {% if item.unidade %}
     <strong>Unidade:</strong> {{ item.unidade }}<br />
     {% endif %}

@@ -22,16 +22,18 @@ class Celula(db.Model):
 class Item(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     celula_id = db.Column(db.Integer, db.ForeignKey('celula.id'), nullable=False)
-    caixa_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)  # Vincula itens/packlists a uma caixa
+    caixa_id = db.Column(db.Integer, db.ForeignKey('item.id'), nullable=True)
     projeto_id = db.Column(db.String(50), nullable=False)
     ordem_id = db.Column(db.String(50), nullable=False)
-    produto_id = db.Column(db.String(50), nullable=True)  # Opcional para itens normais, obrigatório para packlist items
+    produto_id = db.Column(db.String(50), nullable=True)
     nome = db.Column(db.String(100), nullable=False)
     quantidade = db.Column(db.Integer, nullable=False)
-    unidade = db.Column(db.String(20), nullable=True)  # Opcional para itens normais, obrigatório para packlist items
-    tipo = db.Column(db.String(20), default='item')  # 'item', 'packlist' ou 'caixa'
+    unidade = db.Column(db.String(20), nullable=True)
+    tipo = db.Column(db.String(20), default='item')
+    volume = db.Column(db.String(20), nullable=True)
+    sistema = db.Column(db.String(50), nullable=True)
     data_adicionado = db.Column(db.DateTime, default=db.func.current_timestamp())
-    packlist_items = db.relationship('PacklistItem', backref='packlist', lazy=True)
+    packlist_items = db.relationship('PacklistItem', backref='packlist', lazy=True, cascade="all, delete-orphan")
     itens_na_caixa = db.relationship('Item', backref=db.backref('caixa', remote_side=[id]), lazy=True)
 
 class PacklistItem(db.Model):
@@ -54,9 +56,10 @@ def index():
     estoques = Estoque.query.all()
     ordem_id = request.args.get('ordem_id')
     projeto_id = request.args.get('projeto_id')
+    volume = request.args.get('volume')
     resultados = []
     
-    if ordem_id or projeto_id:
+    if ordem_id or projeto_id or volume:
         query = db.session.query(Item, Celula, Estoque)\
             .join(Celula, Item.celula_id == Celula.id)\
             .join(Estoque, Celula.estoque_id == Estoque.id)
@@ -65,11 +68,13 @@ def index():
             query = query.filter(Item.ordem_id == ordem_id)
         if projeto_id:
             query = query.filter(Item.projeto_id == projeto_id)
+        if volume:
+            query = query.filter(Item.volume == volume)
             
         resultados = query.all()
     
     return render_template('index.html', estoques=estoques, resultados=resultados, 
-                         ordem_id=ordem_id, projeto_id=projeto_id)
+                         ordem_id=ordem_id, projeto_id=projeto_id, volume=volume)
 
 @app.route('/estoque/<int:estoque_id>')
 def estoque(estoque_id):
@@ -84,20 +89,22 @@ def celula(celula_id):
         tipo = request.form.get('tipo', 'item')
         projeto_id = request.form['projeto_id']
         ordem_id = request.form['ordem_id']
-        caixa_id = request.form.get('caixa_id', None)  # Pode ser None se não for dentro de uma caixa
+        caixa_id = request.form.get('caixa_id', None)
         
         if not validar_numero(projeto_id) or not validar_numero(ordem_id):
             return "Projeto ID e Ordem ID devem ser números.", 400
 
         if tipo == 'caixa':
-            nome = request.form['nome']  # Nome do projeto inserido pelo operador
-            print(f"Adicionando caixa: Projeto ID={projeto_id}, Nome={nome}, Celula ID={celula.id}")
+            nome = request.form['nome']
+            volume = request.form['volume']
+            print(f"Adicionando caixa: Projeto ID={projeto_id}, Nome={nome}, Volume={volume}, Celula ID={celula.id}")
             nova_caixa = Item(
                 celula_id=celula.id,
                 projeto_id=projeto_id,
                 ordem_id=ordem_id,
                 nome=nome,
-                quantidade=1,  # Uma caixa
+                quantidade=1,
+                volume=volume,
                 tipo='caixa'
             )
             db.session.add(nova_caixa)
@@ -126,6 +133,7 @@ def celula(celula_id):
             db.session.commit()
         elif tipo == 'packlist':
             quantidade_itens = int(request.form['quantidade_itens'])
+            sistema = request.form.get('sistema', '')
             nome = f"Packlist Ordem {ordem_id}"
             packlist = Item(
                 celula_id=celula.id,
@@ -134,10 +142,11 @@ def celula(celula_id):
                 ordem_id=ordem_id,
                 nome=nome,
                 quantidade=quantidade_itens,
+                sistema=sistema,
                 tipo='packlist'
             )
             db.session.add(packlist)
-            db.session.flush()  # Gera o ID do packlist antes de adicionar os itens
+            db.session.flush()
 
             for i in range(quantidade_itens):
                 projeto_id_item = request.form[f'packlist_projeto_id_{i}']
@@ -182,13 +191,12 @@ def processar_qr_code(celula_id):
         partes = [parte.strip() for parte in qr_data.split(" } ")]
         print(f"Partes após split: {partes}")
         
-        if len(partes) < 1:  # Para caixa, só esperamos o ID da PEP
+        if len(partes) < 1:
             return jsonify({'error': 'Formato de QR-Code inválido: ID da PEP não encontrado'}), 400
         
-        # Para itens normais (Produto ID } Nome } Quantidade } Unidade)
         if len(partes) >= 3:
-            projeto_id = "0"  # Padrão
-            ordem_id = "0"    # Padrão
+            projeto_id = "0"
+            ordem_id = "0"
             produto_id = partes[0] if validar_numero(partes[0]) else ""
             nome = partes[1]
             quantidade = partes[2]
@@ -208,7 +216,6 @@ def processar_qr_code(celula_id):
                 'unidade': unidade,
                 'tipo': 'item'
             })
-        # Para caixa (apenas ID da PEP via QR-Code)
         else:
             pep_id = partes[0]
             if not validar_numero(pep_id):
@@ -217,9 +224,9 @@ def processar_qr_code(celula_id):
             print(f"Dados processados (caixa via QR-Code) - PEP ID: {pep_id}")
             
             return jsonify({
-                'projeto_id': "0",  # Padrão
+                'projeto_id': "0",
                 'ordem_id': pep_id,
-                'nome': '',  # Campo vazio para o operador preencher
+                'nome': '',
                 'quantidade': 1,
                 'tipo': 'caixa'
             })
@@ -231,22 +238,27 @@ def processar_qr_code(celula_id):
 def editar_item(item_id):
     item = Item.query.get_or_404(item_id)
     if request.method == 'POST':
-        projeto_id = request.form['projeto_id']
-        ordem_id = request.form['ordem_id']
-        produto_id = request.form.get('produto_id', '')
-        nome = request.form['nome']
-        quantidade = request.form['quantidade']
-        unidade = request.form.get('unidade', '')
+        if item.tipo == 'caixa':
+            item.projeto_id = request.form['projeto_id']
+            item.nome = request.form['nome']
+            item.volume = request.form['volume']
+        else:
+            projeto_id = request.form['projeto_id']
+            ordem_id = request.form['ordem_id']
+            produto_id = request.form.get('produto_id', '')
+            nome = request.form['nome']
+            quantidade = request.form['quantidade']
+            unidade = request.form.get('unidade', '')
 
-        if not validar_numero(projeto_id) or not validar_numero(ordem_id) or (produto_id and not validar_numero(produto_id)):
-            return "Projeto ID, Ordem ID e Produto ID (se fornecido) devem ser números.", 400
+            if not validar_numero(projeto_id) or not validar_numero(ordem_id) or (produto_id and not validar_numero(produto_id)):
+                return "Projeto ID, Ordem ID e Produto ID (se fornecido) devem ser números.", 400
 
-        item.projeto_id = projeto_id
-        item.ordem_id = ordem_id
-        item.produto_id = produto_id
-        item.nome = nome
-        item.quantidade = quantidade
-        item.unidade = unidade
+            item.projeto_id = projeto_id
+            item.ordem_id = ordem_id
+            item.produto_id = produto_id
+            item.nome = nome
+            item.quantidade = quantidade
+            item.unidade = unidade
         db.session.commit()
         return redirect(url_for('celula', celula_id=item.celula_id))
     
@@ -256,6 +268,11 @@ def editar_item(item_id):
 def remover_item(item_id):
     item = Item.query.get_or_404(item_id)
     celula_id = item.celula_id
+    
+    # Se o item for uma packlist, deletar todos os PacklistItem associados
+    if item.tipo == 'packlist':
+        PacklistItem.query.filter_by(packlist_id=item.id).delete()
+    
     db.session.delete(item)
     db.session.commit()
     return redirect(url_for('celula', celula_id=celula_id))

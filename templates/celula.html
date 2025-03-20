@@ -17,7 +17,7 @@
 <h2>Itens</h2>
 <ul class="list-group mb-4">
   {% for item in itens %}
-  {% if not item.caixa_id %} <!-- Exibe apenas itens que não estão dentro de uma caixa -->
+  {% if not item.caixa_id %}
   <li class="list-group-item {% if item.tipo == 'caixa' %}bg-cinza-mais-claro{% elif item.tipo == 'packlist' %}bg-verde-neutro{% else %}bg-lilas{% endif %}">
     <strong>Projeto ID:</strong> {{ item.projeto_id }}<br />
     {% if item.tipo != 'caixa' %}
@@ -27,7 +27,12 @@
     <strong>Produto ID:</strong> {{ item.produto_id }}<br />
     {% endif %}
     <strong>Nome:</strong> {{ item.nome }}<br />
+    {% if item.tipo != 'caixa' %}
     <strong>Quantidade:</strong> {{ item.quantidade }} {{ 'itens' if item.tipo == 'packlist' else '' }}<br />
+    {% endif %}
+    {% if item.volume %}
+    <strong>Volume:</strong> {{ item.volume }}<br />
+    {% endif %}
     {% if item.unidade %}
     <strong>Unidade:</strong> {{ item.unidade }}<br />
     {% endif %}
@@ -43,10 +48,12 @@
         <li class="{% if subitem.tipo == 'packlist' %}bg-verde-neutro{% else %}bg-lilas{% endif %} p-2">
           Projeto ID: {{ subitem.projeto_id }} |
           Ordem ID: {{ subitem.ordem_id }} |
+          {% if subitem.sistema %}Sistema: {{ subitem.sistema }} |{% endif %}
           {% if subitem.produto_id %}Produto ID: {{ subitem.produto_id }} |{% endif %}
-          Nome: {{ subitem.nome }} |
-          Quantidade: {{ subitem.quantidade }} {{ 'itens' if subitem.tipo == 'packlist' else '' }} |
-          {% if subitem.unidade %}Unidade: {{ subitem.unidade }}{% endif %}
+          {% if subitem.tipo != 'packlist' %}Nome: {{ subitem.nome }} |{% endif %}
+          {% if subitem.tipo == 'packlist' %}Quantidade: {{ subitem.quantidade }} itens |{% endif %}
+          {% if subitem.unidade %}Unidade: {{ subitem.unidade }} |{% endif %}
+          <a href="{{ url_for('remover_item', item_id=subitem.id) }}" class="btn btn-danger btn-sm">Remover</a>
           {% if subitem.tipo == 'packlist' %}
           <button class="btn btn-info btn-sm" onclick="togglePacklistDetails('packlist_{{ subitem.id }}')">Ver Itens da Packlist</button>
           <div id="packlist_{{ subitem.id }}" style="display: none;">
@@ -150,6 +157,10 @@
     <input type="text" class="form-control" id="packlist_ordem_id" name="ordem_id" required />
   </div>
   <div class="form-group">
+    <label for="packlist_sistema">Sistema</label>
+    <input type="text" class="form-control" id="packlist_sistema" name="sistema" required />
+  </div>
+  <div class="form-group">
     <label for="quantidade_itens">Quantidade de Itens na Packlist</label>
     <input type="number" class="form-control" id="quantidade_itens" name="quantidade_itens" min="1" required onchange="gerarCamposPacklist(this.value)" />
   </div>
@@ -160,7 +171,7 @@
 <!-- Formulário para Caixa -->
 <form method="POST" id="caixaForm" style="display: none;">
   <input type="hidden" name="tipo" value="caixa">
-  <input type="hidden" name="ordem_id" value="0"> <!-- Ordem ID padrão para caixas manuais -->
+  <input type="hidden" name="ordem_id" value="0">
   <div class="form-group">
     <label for="caixa_projeto_id">Projeto ID</label>
     <input type="text" class="form-control" id="caixa_projeto_id" name="projeto_id" required placeholder="Digite o Projeto ID" />
@@ -169,12 +180,15 @@
     <label for="caixa_nome">Nome</label>
     <input type="text" class="form-control" id="caixa_nome" name="nome" required placeholder="Digite o nome da caixa" />
   </div>
+  <div class="form-group">
+    <label for="caixa_volume">Volume</label>
+    <input type="text" class="form-control" id="caixa_volume" name="volume" required placeholder="Digite o volume da caixa" />
+  </div>
   <input type="hidden" name="quantidade" value="1">
   <button type="submit" class="btn btn-primary">Salvar Caixa</button>
 </form>
 
 <script>
-  // Função para preencher o formulário de item
   function preencherFormulario(data) {
     if (data.error) {
       alert(data.error);
@@ -191,7 +205,6 @@
     }
   }
 
-  // Função para gerar campos dinâmicos para packlist
   function gerarCamposPacklist(quantidade) {
     const container = document.getElementById('packlist_itens');
     const projetoId = document.getElementById('packlist_projeto_id').value;
@@ -229,19 +242,16 @@
     document.getElementById('salvarPacklist').style.display = quantidade > 0 ? 'block' : 'none';
   }
 
-  // Função para mostrar/esconder detalhes da caixa
   function toggleCaixaDetails(id) {
     const element = document.getElementById(id);
     element.style.display = element.style.display === 'none' ? 'block' : 'none';
   }
 
-  // Função para mostrar/esconder detalhes da packlist
   function togglePacklistDetails(id) {
     const element = document.getElementById(id);
     element.style.display = element.style.display === 'none' ? 'block' : 'none';
   }
 
-  // Função para adicionar item à caixa
   function adicionarItemCaixa(caixaId, projetoId) {
     document.getElementById('item_caixa_id').value = caixaId;
     document.getElementById('projeto_id').value = projetoId;
@@ -250,10 +260,9 @@
     document.getElementById('packlistForm').style.display = 'none';
     document.getElementById('caixaForm').style.display = 'none';
     document.getElementById('itemForm').reset();
-    document.getElementById('projeto_id').value = projetoId; // Garante que o valor seja mantido após reset
+    document.getElementById('projeto_id').value = projetoId;
   }
 
-  // Função para adicionar packlist à caixa
   function adicionarPacklistCaixa(caixaId, projetoId) {
     document.getElementById('packlist_caixa_id').value = caixaId;
     document.getElementById('packlist_projeto_id').value = projetoId;
@@ -262,12 +271,11 @@
     document.getElementById('itemForm').style.display = 'none';
     document.getElementById('caixaForm').style.display = 'none';
     document.getElementById('packlistForm').reset();
-    document.getElementById('packlist_projeto_id').value = projetoId; // Garante que o valor seja mantido após reset
+    document.getElementById('packlist_projeto_id').value = projetoId;
     document.getElementById('packlist_itens').innerHTML = '';
     document.getElementById('salvarPacklist').style.display = 'none';
   }
 
-  // Botão Adicionar Item Manualmente
   document.getElementById('btnManualItem').addEventListener('click', function() {
     document.getElementById('item_caixa_id').value = '';
     document.getElementById('projeto_id').readOnly = false;
@@ -278,7 +286,6 @@
     document.getElementById('projeto_id').value = "0";
   });
 
-  // Botão Adicionar Item por QR-Code
   document.getElementById('btnQrItem').addEventListener('click', function() {
     document.getElementById('itemForm').style.display = 'none';
     document.getElementById('packlistForm').style.display = 'none';
@@ -289,7 +296,6 @@
     alert("Escaneie o QR-Code do item com o Zebra DS22 agora.");
   });
 
-  // Botão Adicionar Packlist Manualmente
   document.getElementById('btnManualPacklist').addEventListener('click', function() {
     document.getElementById('packlist_caixa_id').value = '';
     document.getElementById('packlist_projeto_id').readOnly = false;
@@ -302,12 +308,10 @@
     document.getElementById('salvarPacklist').style.display = 'none';
   });
 
-  // Botão Adicionar Packlist por QR-Code (não funcional ainda)
   document.getElementById('btnQrPacklist').addEventListener('click', function() {
     alert("Funcionalidade ainda não implementada. Não há QR-Code para packlist.");
   });
 
-  // Botão Adicionar Caixa Manualmente
   document.getElementById('btnManualCaixa').addEventListener('click', function() {
     document.getElementById('itemForm').style.display = 'none';
     document.getElementById('packlistForm').style.display = 'none';
@@ -316,7 +320,6 @@
     document.getElementById('caixa_projeto_id').focus();
   });
 
-  // Debounce para capturar a entrada completa do scanner (apenas para itens)
   let timeoutId;
   document.getElementById('scannerInput').addEventListener('input', function(event) {
     const scannedData = event.target.value;
@@ -342,7 +345,7 @@
           alert('Erro ao processar QR-Code.');
         });
       }
-    }, 3000); // Aumentado para 3 segundos
+    }, 3000);
   });
 </script>
 {% endblock %}

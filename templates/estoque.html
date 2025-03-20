@@ -1,0 +1,19 @@
+{% extends "base.html" %} 
+{% block content %}
+<h1>{{ estoque.nome }}</h1>
+<a href="{{ url_for('index') }}" class="btn btn-secondary mb-4">Voltar</a>
+<div class="row">
+  {% for celula in celulas %}
+  <div class="col-md-4 mb-4">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">
+          {{ estoque.nome }}-{{ celula.linha * 3 + celula.coluna + 1 }}
+        </h5>
+        <a href="{{ url_for('celula', celula_id=celula.id) }}" class="btn btn-primary">Acessar</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

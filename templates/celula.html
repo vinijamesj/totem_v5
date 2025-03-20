@@ -1,0 +1,348 @@
+{% extends "base.html" %} 
+{% block content %}
+<style>
+  .bg-lilas {
+    background-color: #e6e6fa; /* Lilás claro neutro */
+  }
+  .bg-verde-neutro {
+    background-color: #e8f5e9; /* Verde claro neutro */
+  }
+  .bg-cinza-mais-claro {
+    background-color: #f5f5f5; /* Cinza mais claro */
+  }
+</style>
+<h1>{{ celula.estoque.nome }}-{{ celula.linha * 3 + celula.coluna + 1 }}</h1>
+<a href="{{ url_for('estoque', estoque_id=celula.estoque_id) }}" class="btn btn-secondary mb-4">Voltar</a>
+
+<h2>Itens</h2>
+<ul class="list-group mb-4">
+  {% for item in itens %}
+  {% if not item.caixa_id %} <!-- Exibe apenas itens que não estão dentro de uma caixa -->
+  <li class="list-group-item {% if item.tipo == 'caixa' %}bg-cinza-mais-claro{% elif item.tipo == 'packlist' %}bg-verde-neutro{% else %}bg-lilas{% endif %}">
+    <strong>Projeto ID:</strong> {{ item.projeto_id }}<br />
+    {% if item.tipo != 'caixa' %}
+    <strong>Ordem ID:</strong> {{ item.ordem_id }}<br />
+    {% endif %}
+    {% if item.produto_id %}
+    <strong>Produto ID:</strong> {{ item.produto_id }}<br />
+    {% endif %}
+    <strong>Nome:</strong> {{ item.nome }}<br />
+    <strong>Quantidade:</strong> {{ item.quantidade }} {{ 'itens' if item.tipo == 'packlist' else '' }}<br />
+    {% if item.unidade %}
+    <strong>Unidade:</strong> {{ item.unidade }}<br />
+    {% endif %}
+    <strong>Data:</strong> {{ item.data_adicionado.strftime('%d/%m/%Y %H:%M') }}<br />
+    <a href="{{ url_for('remover_item', item_id=item.id) }}" class="btn btn-danger btn-sm">Remover</a>
+    <a href="{{ url_for('editar_item', item_id=item.id) }}" class="btn btn-warning btn-sm">Editar</a>
+    {% if item.tipo == 'caixa' %}
+    <button class="btn btn-info btn-sm" onclick="toggleCaixaDetails('caixa_{{ item.id }}')">Ver Itens da Caixa</button>
+    <div id="caixa_{{ item.id }}" style="display: none;">
+      <h5>Itens na Caixa:</h5>
+      <ul>
+        {% for subitem in item.itens_na_caixa %}
+        <li class="{% if subitem.tipo == 'packlist' %}bg-verde-neutro{% else %}bg-lilas{% endif %} p-2">
+          Projeto ID: {{ subitem.projeto_id }} |
+          Ordem ID: {{ subitem.ordem_id }} |
+          {% if subitem.produto_id %}Produto ID: {{ subitem.produto_id }} |{% endif %}
+          Nome: {{ subitem.nome }} |
+          Quantidade: {{ subitem.quantidade }} {{ 'itens' if subitem.tipo == 'packlist' else '' }} |
+          {% if subitem.unidade %}Unidade: {{ subitem.unidade }}{% endif %}
+          {% if subitem.tipo == 'packlist' %}
+          <button class="btn btn-info btn-sm" onclick="togglePacklistDetails('packlist_{{ subitem.id }}')">Ver Itens da Packlist</button>
+          <div id="packlist_{{ subitem.id }}" style="display: none;">
+            <h6>Itens da Packlist:</h6>
+            <ul>
+              {% for packlist_item in subitem.packlist_items %}
+              <li>
+                Projeto ID: {{ packlist_item.projeto_id }} |
+                Ordem ID: {{ packlist_item.ordem_id }} |
+                Produto ID: {{ packlist_item.produto_id }} |
+                Nome: {{ packlist_item.nome }} |
+                Quantidade: {{ packlist_item.quantidade }} |
+                Unidade: {{ packlist_item.unidade }}
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      <button class="btn btn-primary btn-sm" onclick="adicionarItemCaixa('{{ item.id }}', '{{ item.projeto_id }}')">Adicionar Item à Caixa</button>
+      <button class="btn btn-primary btn-sm" onclick="adicionarPacklistCaixa('{{ item.id }}', '{{ item.projeto_id }}')">Adicionar Packlist à Caixa</button>
+    </div>
+    {% elif item.tipo == 'packlist' %}
+    <button class="btn btn-info btn-sm" onclick="togglePacklistDetails('packlist_{{ item.id }}')">Ver Itens da Packlist</button>
+    <div id="packlist_{{ item.id }}" style="display: none;">
+      <h5>Itens da Packlist:</h5>
+      <ul>
+        {% for packlist_item in item.packlist_items %}
+        <li>
+          Projeto ID: {{ packlist_item.projeto_id }} |
+          Ordem ID: {{ packlist_item.ordem_id }} |
+          Produto ID: {{ packlist_item.produto_id }} |
+          Nome: {{ packlist_item.nome }} |
+          Quantidade: {{ packlist_item.quantidade }} |
+          Unidade: {{ packlist_item.unidade }}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </li>
+  {% endif %}
+  {% endfor %}
+</ul>
+
+<h2>Adicionar Item, Packlist ou Caixa</h2>
+<div class="mb-3">
+  <button type="button" class="btn btn-primary" id="btnManualItem">Adicionar Item Manualmente</button>
+  <button type="button" class="btn btn-success" id="btnQrItem">Adicionar Item por QR-Code</button>
+  <button type="button" class="btn btn-primary" id="btnManualPacklist">Adicionar Packlist Manualmente</button>
+  <button type="button" class="btn btn-success" id="btnQrPacklist">Adicionar Packlist por QR-Code</button>
+  <button type="button" class="btn btn-primary" id="btnManualCaixa">Adicionar Caixa Manualmente</button>
+</div>
+
+<!-- Campo oculto para capturar a entrada do scanner -->
+<input type="text" id="scannerInput" style="opacity: 0; position: absolute;" />
+
+<!-- Formulário para Item -->
+<form method="POST" id="itemForm" style="display: none;">
+  <input type="hidden" name="tipo" value="item">
+  <input type="hidden" name="caixa_id" id="item_caixa_id">
+  <div class="form-group">
+    <label for="projeto_id">Projeto ID</label>
+    <input type="text" class="form-control" id="projeto_id" name="projeto_id" value="0" required />
+  </div>
+  <div class="form-group">
+    <label for="ordem_id">Ordem ID</label>
+    <input type="text" class="form-control" id="ordem_id" name="ordem_id" required />
+  </div>
+  <div class="form-group">
+    <label for="produto_id">Produto ID</label>
+    <input type="text" class="form-control" id="produto_id" name="produto_id" />
+  </div>
+  <div class="form-group">
+    <label for="nome">Nome</label>
+    <input type="text" class="form-control" id="nome" name="nome" required />
+  </div>
+  <div class="form-group">
+    <label for="quantidade">Quantidade</label>
+    <input type="number" class="form-control" id="quantidade" name="quantidade" required />
+  </div>
+  <div class="form-group">
+    <label for="unidade">Unidade</label>
+    <input type="text" class="form-control" id="unidade" name="unidade" />
+  </div>
+  <button type="submit" class="btn btn-primary">Salvar Item</button>
+</form>
+
+<!-- Formulário para Packlist -->
+<form method="POST" id="packlistForm" style="display: none;">
+  <input type="hidden" name="tipo" value="packlist">
+  <input type="hidden" name="caixa_id" id="packlist_caixa_id">
+  <div class="form-group">
+    <label for="packlist_projeto_id">Projeto ID</label>
+    <input type="text" class="form-control" id="packlist_projeto_id" name="projeto_id" value="0" required />
+  </div>
+  <div class="form-group">
+    <label for="packlist_ordem_id">Ordem ID</label>
+    <input type="text" class="form-control" id="packlist_ordem_id" name="ordem_id" required />
+  </div>
+  <div class="form-group">
+    <label for="quantidade_itens">Quantidade de Itens na Packlist</label>
+    <input type="number" class="form-control" id="quantidade_itens" name="quantidade_itens" min="1" required onchange="gerarCamposPacklist(this.value)" />
+  </div>
+  <div id="packlist_itens"></div>
+  <button type="submit" class="btn btn-primary" style="display: none;" id="salvarPacklist">Salvar Packlist</button>
+</form>
+
+<!-- Formulário para Caixa -->
+<form method="POST" id="caixaForm" style="display: none;">
+  <input type="hidden" name="tipo" value="caixa">
+  <input type="hidden" name="ordem_id" value="0"> <!-- Ordem ID padrão para caixas manuais -->
+  <div class="form-group">
+    <label for="caixa_projeto_id">Projeto ID</label>
+    <input type="text" class="form-control" id="caixa_projeto_id" name="projeto_id" required placeholder="Digite o Projeto ID" />
+  </div>
+  <div class="form-group">
+    <label for="caixa_nome">Nome</label>
+    <input type="text" class="form-control" id="caixa_nome" name="nome" required placeholder="Digite o nome da caixa" />
+  </div>
+  <input type="hidden" name="quantidade" value="1">
+  <button type="submit" class="btn btn-primary">Salvar Caixa</button>
+</form>
+
+<script>
+  // Função para preencher o formulário de item
+  function preencherFormulario(data) {
+    if (data.error) {
+      alert(data.error);
+    } else if (data.tipo === 'item') {
+      document.getElementById('projeto_id').value = document.getElementById('projeto_id').value || data.projeto_id;
+      document.getElementById('ordem_id').value = document.getElementById('ordem_id').value || data.ordem_id;
+      document.getElementById('produto_id').value = data.produto_id;
+      document.getElementById('nome').value = data.nome;
+      document.getElementById('quantidade').value = data.quantidade;
+      document.getElementById('unidade').value = data.unidade;
+      document.getElementById('itemForm').style.display = 'block';
+      document.getElementById('caixaForm').style.display = 'none';
+      document.getElementById('packlistForm').style.display = 'none';
+    }
+  }
+
+  // Função para gerar campos dinâmicos para packlist
+  function gerarCamposPacklist(quantidade) {
+    const container = document.getElementById('packlist_itens');
+    const projetoId = document.getElementById('packlist_projeto_id').value;
+    const ordemId = document.getElementById('packlist_ordem_id').value;
+    container.innerHTML = '';
+    for (let i = 0; i < quantidade; i++) {
+      container.innerHTML += `
+        <h5>Item ${i + 1}</h5>
+        <div class="form-group">
+          <label>Projeto ID</label>
+          <input type="text" class="form-control" name="packlist_projeto_id_${i}" value="${projetoId}" required readonly />
+        </div>
+        <div class="form-group">
+          <label>Ordem ID</label>
+          <input type="text" class="form-control" name="packlist_ordem_id_${i}" value="${ordemId}" required />
+        </div>
+        <div class="form-group">
+          <label>Produto ID</label>
+          <input type="text" class="form-control" name="packlist_produto_id_${i}" required />
+        </div>
+        <div class="form-group">
+          <label>Nome</label>
+          <input type="text" class="form-control" name="packlist_nome_${i}" required />
+        </div>
+        <div class="form-group">
+          <label>Quantidade</label>
+          <input type="number" class="form-control" name="packlist_quantidade_${i}" required />
+        </div>
+        <div class="form-group">
+          <label>Unidade</label>
+          <input type="text" class="form-control" name="packlist_unidade_${i}" required />
+        </div>
+      `;
+    }
+    document.getElementById('salvarPacklist').style.display = quantidade > 0 ? 'block' : 'none';
+  }
+
+  // Função para mostrar/esconder detalhes da caixa
+  function toggleCaixaDetails(id) {
+    const element = document.getElementById(id);
+    element.style.display = element.style.display === 'none' ? 'block' : 'none';
+  }
+
+  // Função para mostrar/esconder detalhes da packlist
+  function togglePacklistDetails(id) {
+    const element = document.getElementById(id);
+    element.style.display = element.style.display === 'none' ? 'block' : 'none';
+  }
+
+  // Função para adicionar item à caixa
+  function adicionarItemCaixa(caixaId, projetoId) {
+    document.getElementById('item_caixa_id').value = caixaId;
+    document.getElementById('projeto_id').value = projetoId;
+    document.getElementById('projeto_id').readOnly = true;
+    document.getElementById('itemForm').style.display = 'block';
+    document.getElementById('packlistForm').style.display = 'none';
+    document.getElementById('caixaForm').style.display = 'none';
+    document.getElementById('itemForm').reset();
+    document.getElementById('projeto_id').value = projetoId; // Garante que o valor seja mantido após reset
+  }
+
+  // Função para adicionar packlist à caixa
+  function adicionarPacklistCaixa(caixaId, projetoId) {
+    document.getElementById('packlist_caixa_id').value = caixaId;
+    document.getElementById('packlist_projeto_id').value = projetoId;
+    document.getElementById('packlist_projeto_id').readOnly = true;
+    document.getElementById('packlistForm').style.display = 'block';
+    document.getElementById('itemForm').style.display = 'none';
+    document.getElementById('caixaForm').style.display = 'none';
+    document.getElementById('packlistForm').reset();
+    document.getElementById('packlist_projeto_id').value = projetoId; // Garante que o valor seja mantido após reset
+    document.getElementById('packlist_itens').innerHTML = '';
+    document.getElementById('salvarPacklist').style.display = 'none';
+  }
+
+  // Botão Adicionar Item Manualmente
+  document.getElementById('btnManualItem').addEventListener('click', function() {
+    document.getElementById('item_caixa_id').value = '';
+    document.getElementById('projeto_id').readOnly = false;
+    document.getElementById('itemForm').style.display = 'block';
+    document.getElementById('packlistForm').style.display = 'none';
+    document.getElementById('caixaForm').style.display = 'none';
+    document.getElementById('itemForm').reset();
+    document.getElementById('projeto_id').value = "0";
+  });
+
+  // Botão Adicionar Item por QR-Code
+  document.getElementById('btnQrItem').addEventListener('click', function() {
+    document.getElementById('itemForm').style.display = 'none';
+    document.getElementById('packlistForm').style.display = 'none';
+    document.getElementById('caixaForm').style.display = 'none';
+    const scannerInput = document.getElementById('scannerInput');
+    scannerInput.value = '';
+    scannerInput.focus();
+    alert("Escaneie o QR-Code do item com o Zebra DS22 agora.");
+  });
+
+  // Botão Adicionar Packlist Manualmente
+  document.getElementById('btnManualPacklist').addEventListener('click', function() {
+    document.getElementById('packlist_caixa_id').value = '';
+    document.getElementById('packlist_projeto_id').readOnly = false;
+    document.getElementById('itemForm').style.display = 'none';
+    document.getElementById('packlistForm').style.display = 'block';
+    document.getElementById('caixaForm').style.display = 'none';
+    document.getElementById('packlistForm').reset();
+    document.getElementById('packlist_projeto_id').value = "0";
+    document.getElementById('packlist_itens').innerHTML = '';
+    document.getElementById('salvarPacklist').style.display = 'none';
+  });
+
+  // Botão Adicionar Packlist por QR-Code (não funcional ainda)
+  document.getElementById('btnQrPacklist').addEventListener('click', function() {
+    alert("Funcionalidade ainda não implementada. Não há QR-Code para packlist.");
+  });
+
+  // Botão Adicionar Caixa Manualmente
+  document.getElementById('btnManualCaixa').addEventListener('click', function() {
+    document.getElementById('itemForm').style.display = 'none';
+    document.getElementById('packlistForm').style.display = 'none';
+    document.getElementById('caixaForm').style.display = 'block';
+    document.getElementById('caixaForm').reset();
+    document.getElementById('caixa_projeto_id').focus();
+  });
+
+  // Debounce para capturar a entrada completa do scanner (apenas para itens)
+  let timeoutId;
+  document.getElementById('scannerInput').addEventListener('input', function(event) {
+    const scannedData = event.target.value;
+    console.log("Dados parciais escaneados:", scannedData);
+    
+    clearTimeout(timeoutId);
+    
+    timeoutId = setTimeout(() => {
+      console.log("Dados completos escaneados no frontend:", scannedData);
+      if (scannedData) {
+        fetch('/celula/{{ celula.id }}/qr_code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'qr_data=' + encodeURIComponent(scannedData)
+        })
+        .then(response => response.json())
+        .then(data => {
+          preencherFormulario(data);
+          event.target.value = '';
+        })
+        .catch(error => {
+          console.error('Erro ao processar QR-Code:', error);
+          alert('Erro ao processar QR-Code.');
+        });
+      }
+    }, 3000); // Aumentado para 3 segundos
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %} 
+{% block content %}
+<h1>Editar Item</h1>
+<a href="{{ url_for('celula', celula_id=item.celula_id) }}" class="btn btn-secondary mb-4">Voltar</a>
+
+<form method="POST">
+  <div class="form-group">
+    <label for="projeto_id">Projeto ID</label>
+    <input type="text" class="form-control" id="projeto_id" name="projeto_id" value="{{ item.projeto_id }}" required />
+  </div>
+  <div class="form-group">
+    <label for="ordem_id">Ordem ID</label>
+    <input type="text" class="form-control" id="ordem_id" name="ordem_id" value="{{ item.ordem_id }}" required />
+  </div>
+  <div class="form-group">
+    <label for="produto_id">Produto ID</label>
+    <input type="text" class="form-control" id="produto_id" name="produto_id" value="{{ item.produto_id or '' }}" />
+  </div>
+  <div class="form-group">
+    <label for="nome">Nome</label>
+    <input type="text" class="form-control" id="nome" name="nome" value="{{ item.nome }}" required />
+  </div>
+  <div class="form-group">
+    <label for="quantidade">Quantidade</label>
+    <input type="number" class="form-control" id="quantidade" name="quantidade" value="{{ item.quantidade }}" required />
+  </div>
+  <div class="form-group">
+    <label for="unidade">Unidade</label>
+    <input type="text" class="form-control" id="unidade" name="unidade" value="{{ item.unidade or '' }}" />
+  </div>
+  <button type="submit" class="btn btn-primary">Salvar</button>
+</form>
+{% endblock %}

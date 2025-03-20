@@ -1,0 +1,49 @@
+{% extends "base.html" %} 
+{% block content %}
+<h1>Estoques</h1>
+<form method="GET" action="{{ url_for('index') }}" class="mb-4">
+  <div class="form-group">
+    <label for="projeto_id">Buscar por Projeto (ID):</label>
+    <input type="text" class="form-control" id="projeto_id" name="projeto_id" value="{{ projeto_id or '' }}" />
+  </div>
+  <div class="form-group">
+    <label for="ordem_id">Buscar por Ordem (ID):</label>
+    <input type="text" class="form-control" id="ordem_id" name="ordem_id" value="{{ ordem_id or '' }}" />
+  </div>
+  <button type="submit" class="btn btn-primary">Buscar</button>
+</form>
+
+{% if resultados %}
+<h2>Resultados da Busca</h2>
+<ul class="list-group">
+  {% for item, celula, estoque in resultados %}
+  <li class="list-group-item">
+    <strong>Projeto ID:</strong> {{ item.projeto_id }}<br />
+    <strong>Ordem ID:</strong> {{ item.ordem_id }}<br />
+    {% if item.produto_id %}
+    <strong>Produto ID:</strong> {{ item.produto_id }}<br />
+    {% endif %}
+    <strong>Nome:</strong> {{ item.nome }}<br />
+    <strong>Quantidade:</strong> {{ item.quantidade }} {{ 'itens' if item.tipo == 'packlist' else '' }}<br />
+    {% if item.unidade %}
+    <strong>Unidade:</strong> {{ item.unidade }}<br />
+    {% endif %}
+    <strong>Localização:</strong> {{ estoque.nome }}-{{ celula.linha * 3 + celula.coluna + 1 }}
+  </li>
+  {% endfor %}
+</ul>
+{% endif %}
+
+<div class="row mt-4">
+  {% for estoque in estoques %}
+  <div class="col-md-4 mb-4">
+    <div class="card">
+      <div class="card-body">
+        <h5 class="card-title">{{ estoque.nome }}</h5>
+        <a href="{{ url_for('estoque', estoque_id=estoque.id) }}" class="btn btn-primary">Acessar</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}
